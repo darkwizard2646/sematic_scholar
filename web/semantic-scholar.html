@@ -75,9 +75,34 @@
             }
         }
 
+        async function pdf_download(filename) {
+            var data = await await fetch('/single_link?paper_id=' + filename)
+                .then(response => response.json())
+                .then(data => {
+                    return data;
+                })
+                .catch(error => console.error('Error:', error));
+
+            console.log(data);
+            
+            var statusParam = document.getElementById(filename);
+
+            if (data.status === 0) {
+                statusParam.innerHTML += " - not connected";
+                return;
+            }
+
+            if (download(data.url, filename)) {
+                statusParam.innerHTML += " - Download Success!";
+            } else {
+                statusParam.innerHTML += " - Download Faild!";
+            }
+        }
+
         async function sendRequest() {
             var input = document.getElementById('inputText').value;
-            var inputArray = input.split(',');
+            var arr = input.split(',');
+            var inputArray = arr.map(item => item.trim());
             var outputCountDiv = document.getElementById('output-count');
             var outputDiv = document.getElementById('output');
 
@@ -94,102 +119,49 @@
             firstStepDiv.innerHTML = '<h4>1. Getting citations and references of all papers</h4>';
             outputDiv.appendChild(firstStepDiv);
 
+            let num = 0;
+
             for (var index = 0; index < inputArray.length; index++) {
                 var hashId = inputArray[index];
-
-                var resultDiv = document.createElement('div');
-
-                resultDiv.innerHTML = '<p class="secondary"> Getting paper information for the <strong>' + (index + 1) + "</strong>th paper of <strong>" + inputArray.length + '</strong></p>';
-                outputDiv.appendChild(resultDiv);
-                var data = await await fetch('/scholar?hash_ids=' + hashId)
+                var hashDiv = document.createElement("div");
+                hashDiv.innerHTML = "<h5>From By " + hashId + "</h5>";
+                outputDiv.appendChild(hashDiv);
+                var data = await await fetch('/paper_link?paper_id=' + hashId)
                     .then(response => response.json())
                     .then(data => {
                         return data;
                     })
                     .catch(error => console.error('Error:', error));
 
-                var status = data.status;
-                var resultLink = document.createElement('a');
-                if (status === 1) {
-                    var paper_ids_with_pdf = data.paper_ids_with_pdf; // Assuming the API returns a URL
-                    var paperDetails = data.data;
-                    console.error(data)
-                    urls.push(...paper_ids_with_pdf);
-                    totalData[hashId] = paperDetails;
-                } else {
-                    resultLink.innerText = "ERROR: " + data.message;
-                    var waitingDiv = document.createElement('div');
-                    waitingDiv.innerHTML = '<p class="secondary"> Waiting for 80 seconds to avoid network traffic issue</p>';
-                    outputDiv.appendChild(waitingDiv);
-                    await wait(800000);
-                    window.scrollTo(0, document.body.scrollHeight);
-                    index = index - 1;
-                    continue;
+                if (data.status === 1) {
+                    for (let i = 0; i < data.urls.length; i++) {
+                        if(!urls.includes(data.urls[i])) {
+                            urls.push(data.urls[i]);
+                            var resultDiv = document.createElement("div");
+                            resultDiv.innerHTML = "<p id=" + data.urls[i] + ">" + (++num) + ' . ' + data.urls[i] + '</p>';
+                            outputDiv.appendChild(resultDiv);
+                        }
+                    }
                 }
-                resultDiv.innerHTML = '<p class="secondary"> Finished to process the <strong>' + (index + 1) + "</strong>th paper of <strong>" + inputArray.length + '</strong></p>';
-                resultDiv.appendChild(resultLink);
-
-                window.scrollTo(0, document.body.scrollHeight);
-                // await wait(1000);
-            }
-
-            var firstStepResultDiv = document.createElement('div');
-            firstStepResultDiv.innerHTML = 'Finished to fetch citations and references information. We have found ' + urls.length + " papers with pdf files. Next step will get download urls for those in the next step";
-            outputDiv.appendChild(firstStepResultDiv);
-            
-            downloadTxtFile(JSON.stringify(totalData), 'paper_details.json');
-
-            var secondStepDiv = document.createElement('div');
-            secondStepDiv.innerHTML = '<h4>2. Getting download urls of all citation and reference papers: Total citation | reference papers count: ' + urls.length + '</h4>';
-            outputDiv.appendChild(secondStepDiv);
-            
-            var downloadUrls = [];
-            for (var index = 0; index < urls.length; index++) {
-                var resultDiv = document.createElement('div');
-                resultDiv.innerHTML = '<p class="secondary"> Getting download url for the <strong>' + (index + 1) + "</strong>th paper of <strong>" + urls.length + '</strong></p>';
-                outputDiv.appendChild(resultDiv);
-                var paperId = urls[index];
-                var data = await await fetch('/paper_link?paper_id=' + paperId)
-                    .then(response => response.json())
-                    .then(data => {
-                        return data;
-                    })
-                    .catch(error => console.error('Error:', error));
-                var status = data.status;
-                var resultLink = document.createElement('a');
-                if (status === 1) {
-                    var resultUrl = data.url; // Assuming the API returns a URL
-                    resultLink.href = resultUrl;
-
-                    // Extract File Name
-                    var parsedUrl = new URL(resultUrl);
-                    // Get filename parameter from query string
-                    var filename = parsedUrl.searchParams.get('filename');
-                    // Clean filename (remove special characters for URL encoding)
-                    // var cleanedFilename = filename.replace(/[^a-zA-Z0-9]+/g, '_');
-                    resultLink.innerText = filename;
-                    downloadUrls.push(resultUrl)
-                } else {
-                    resultLink.innerText = "ERROR: " + data.message;
-                    var waitingDiv = document.createElement('div');
-                    waitingDiv.innerHTML = '<p class="secondary"> Waiting for 80 seconds to avoid network traffic issue</p>';
-                    outputDiv.appendChild(waitingDiv);
-                    await wait(800000);
-                    window.scrollTo(0, document.body.scrollHeight);
-                    index = index - 1;
+                else if (data.status !== 1 || data.urls.length == 0) {
+                    var resultDiv = document.createElement("div");
+                    resultDiv.innerHTML = "<p>No Result from " + hashId + "</p>";
+                    outputDiv.appendChild(resultDiv);
                 }
-                resultDiv.innerHTML = '<p class="secondary"> Finished to process the <strong>' + (index + 1) + "</strong>th paper of <strong>" + urls.length + '</strong></p>';
-                resultDiv.appendChild(resultLink);
-
-                window.scrollTo(0, document.body.scrollHeight);
                 // await wait(10000);
             }
 
-            var finishedDiv = document.createElement('div');
-            finishedDiv.innerHTML = "<h1>Finished!!! :)</h1>"
-            console.error(downloadUrls)
-            downloadTxtFile(downloadUrls.join('\r\n'), 'paper-download-urls.txt');
-            outputDiv.appendChild(finishedDiv)
+            console.log('url get successed.', num)
+
+            for(let i = 0; i < num; i++) {
+                // console.log(i)
+                pdf_download(urls[i]);
+            }
+            // var finishedDiv = document.createElement('div');
+            // finishedDiv.innerHTML = "<h1>Finished!!! :)</h1>"
+            // console.error(downloadUrls)
+            // downloadTxtFile(downloadUrls.join('\r\n'), 'paper-download-urls.txt');
+            // outputDiv.appendChild(finishedDiv)
         }
     </script>
 </body>
